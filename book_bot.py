@@ -1,31 +1,27 @@
 import os
 import logging
+import io
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 from PyPDF2 import PdfReader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from sentence_transformers import SentenceTransformer
-import faiss
-import numpy as np
-import io
 
 TOKEN = os.environ.get("BOT_TOKEN")
 
 logging.basicConfig(level=logging.INFO)
 
-index = None
-chunks = []
-model = SentenceTransformer('all-MiniLM-L6-v2')
+# Хранилище текста книги
+book_text = ""
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Привет! Отправь мне PDF-книгу, и я смогу по ней отвечать.")
+    await update.message.reply_text("Привет! Отправь мне PDF-книгу, и я запомню её.")
+
 
 async def handle_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global index, chunks
+    global book_text
     file = await update.message.document.get_file()
     pdf_bytes = await file.download_as_bytearray()
-    
-    await update.message.reply_text("📖 Читаю книгу, подожди минуту...")
+
+    await update.message.reply_text("📖 Читаю книгу, подожди немного...")
 
     reader = PdfReader(io.BytesIO(pdf_bytes))
     text = ""
@@ -34,29 +30,33 @@ async def handle_pdf(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if extracted:
             text += extracted
 
-    splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-    chunks = splitter.split_text(text)
+    # Сохраняем только первые 3000 символов для экономии памяти
+    book_text = text[:3000]
+    await update.message.reply_text(f"✅ Книга загружена! Теперь задавай вопросы (первые 3000 символов).")
 
-    embeddings = model.encode(chunks)
-    index = faiss.IndexFlatL2(embeddings.shape[1])
-    index.add(np.array(embeddings).astype('float32'))
-
-    await update.message.reply_text(f"✅ Готово! Книга из {len(chunks)} отрывков загружена. Теперь задавай вопросы.")
 
 async def ask_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    global index, chunks
-    if index is None:
+    global book_text
+    if not book_text:
         await update.message.reply_text("Сначала отправь PDF-книгу.")
         return
 
-    question = update.message.text
-    q_emb = model.encode([question])
-    distances, idxs = index.search(np.array(q_emb).astype('float32'), k=3)
+    question = update.message.text.lower()
+    await update.message.reply_text("🔍 Ищу ответ в книге...")
 
-    context_text = "\n\n".join([chunks[i] for i in idxs[0]])
+    # Простой поиск: ищем предложение, где встречается вопрос или его часть
+    lines = book_text.split(". ")
+    found = []
+    for line in lines:
+        if any(word in line.lower() for word in question.split()):
+            found.append(line.strip())
 
-    answer = f"🔍 Вот что я нашёл в книге:\n\n{context_text[:1500]}"
-    await update.message.reply_text(answer)
+    if found:
+        answer = ". ".join(found[:3])
+        await update.message.reply_text(f"📖 Вот что нашлось в книге:\n\n{answer[:1000]}")
+    else:
+        await update.message.reply_text("🤷 Не нашёл в книге ответа на ваш вопрос.")
+
 
 def main():
     app = Application.builder().token(TOKEN).build()
@@ -65,6 +65,7 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, ask_question))
     print("Бот запущен...")
     app.run_polling()
+
 
 if __name__ == "__main__":
     main()
