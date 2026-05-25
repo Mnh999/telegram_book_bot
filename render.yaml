@@ -1,12 +1,11 @@
 services:
-  - type: web
-    name: telegram-bot
+  - type: worker
+    name: dance-bot
     runtime: python
-    plan: free
-    branch: main
     buildCommand: pip install -r requirements.txt
-    startCommand: python3 async_bot.py
-    autoDeploy: false
+    startCommand: python dance_bot.py
     envVars:
       - key: BOT_TOKEN
+        sync: false
+      - key: ADMIN_PASSWORD
         sync: false
