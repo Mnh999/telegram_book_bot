@@ -1,6 +1,2 @@
 python-telegram-bot
 PyPDF2
-langchain
-sentence-transformers
-faiss-cpu
-numpy
