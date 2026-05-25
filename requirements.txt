@@ -1,3 +1,3 @@
-python-telegram-bot
-PyPDF2
-openai
+aiogram==2.25.1
+SQLAlchemy==1.4.46
+python-dotenv==1.0.0
